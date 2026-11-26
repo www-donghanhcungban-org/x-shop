@@ -10,7 +10,7 @@ import type { Permission } from "@x-shop/domain";
  *   - ghi (POST/PUT/PATCH/DELETE) → `settings.manage` (chỉ owner, kèm MFA).
  * User chưa có vai trò nào chỉ được đọc hồ sơ mình (`GET /admin/users/me`).
  *
- * Mục ĐỌC dưới đây = mọi route GET mà dashboard Medusa 2.22.1 gọi (nguồn: `sdk.admin.*` trong bundle
+ * Mục ĐỌC dưới đây = mọi route GET mà dashboard Medusa 2.22.7 gọi (nguồn: `sdk.admin.*` trong bundle
  * `@medusajs/dashboard/dist` ánh xạ sang path qua `@medusajs/js-sdk/dist/esm/admin`, đối chiếu cây route
  * `@medusajs/medusa/dist/api/admin/**\/route.js`; test rbac.spec.ts quét lại cả hai nên nâng cấp Medusa thêm route là đỏ).
  * Nguyên tắc cấp đọc (theo PATH):
@@ -71,7 +71,6 @@ export const NATIVE_ADMIN_ROUTES: readonly NativeRoute[] = [
   { methods: ALL, path: "/admin/invites/*", rule: p("user.manage") },
   { methods: ALL, path: "/admin/api-keys/*", rule: p("settings.manage") },
   { methods: W, path: "/admin/stores/*", rule: p("settings.manage") },
-  { methods: ALL, path: "/admin/rbac/*", rule: p("settings.manage") },
   { methods: ALL, path: "/admin/workflows-executions/*", rule: p("settings.manage") },
   // Thông báo native chứa người nhận (`to` = email/SĐT) + dữ liệu đơn → chỉ owner. Chuông thông báo ở khung dashboard
   // của vai trò khác nhận 403 và bỏ qua (không vỡ trang).
@@ -96,6 +95,9 @@ export const NATIVE_ADMIN_ROUTES: readonly NativeRoute[] = [
   { methods: R, path: "/admin/currencies/*", rule: { kind: "any_role" } },
   { methods: R, path: "/admin/locales/*", rule: { kind: "any_role" } },
   { methods: R, path: "/admin/plugins", rule: { kind: "any_role" } },
+  // Khoá module đã cài (Medusa ≥ 2.22.3): khung dashboard gọi ở MỌI trang để biết có RBAC native không; chỉ trả
+  // `{ key }`, không dữ liệu nghiệp vụ. RBAC native (`/rbac/*`, trước là `/admin/rbac/*`) đóng hẳn ở native-rbac.ts.
+  { methods: R, path: "/admin/modules", rule: { kind: "any_role" } },
   { methods: R, path: "/admin/return-reasons/*", rule: { kind: "any_role" } },
   { methods: R, path: "/admin/refund-reasons/*", rule: { kind: "any_role" } },
   { methods: R, path: "/admin/views/*", rule: { kind: "any_role" } },

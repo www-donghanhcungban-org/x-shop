@@ -16,6 +16,7 @@ import {
   rejectEmailpassGet,
 } from "../lib/admin-security/guard";
 import { inviteAcceptGuard } from "../lib/admin-security/invite-guard";
+import { blockNativeRbac } from "../lib/admin-security/native-rbac";
 import { registerGate } from "../lib/admin-security/register-gate";
 import { reservationLocationGuard } from "../lib/admin-security/reservation-guard";
 import { resetPasswordGuard } from "../lib/admin-security/reset-password";
@@ -75,6 +76,9 @@ export default defineMiddlewares({
     { matcher: "/admin", middlewares: [securityHeaders, csrfGuard("admin"), rejectNulBytes] },
     { matcher: "/auth", middlewares: [securityHeaders, csrfGuard("auth"), rejectNulBytes] },
     { matcher: "/x", middlewares: [securityHeaders, rejectNulBytes] },
+    // RBAC native `/rbac/*` (Medusa ≥ 2.22.3, ngoài `/admin` nên cổng RBAC admin không phủ) → 403 với mọi actor/method,
+    // kể cả owner (lib/admin-security/native-rbac.ts). Toàn cục (không `methods`) → chạy trước middleware/handler native.
+    { matcher: "/rbac", middlewares: [securityHeaders, blockNativeRbac] },
     // Rate limit Store API theo IP + khoá nghiệp vụ (SEC03, T-034); tra cứu đơn giới hạn trong route (AT20).
     { methods: ["GET"], matcher: "/store/x/search", middlewares: [searchRateLimit] },
     { methods: ["GET"], matcher: "/store/x/products", middlewares: [productSearchRateLimit] },

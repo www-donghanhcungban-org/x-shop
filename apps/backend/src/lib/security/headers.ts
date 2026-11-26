@@ -24,11 +24,11 @@ export function apiSecurityHeaders(production: boolean): Record<string, string> 
 }
 
 export function securityHeaders(_req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) {
-  for (const [k, v] of Object.entries(apiSecurityHeaders(getHttpSecurityConfig().production))) {
-    // Chỉ đặt khi chưa có; giá trị rỗng coi như chưa đặt (giữ hành vi cũ — header bảo mật rỗng không có tác dụng).
-    const current = res.getHeader(k);
-    if (current === undefined || current === "") res.setHeader(k, v);
-  }
+  // GHI ĐÈ, không "chỉ đặt khi chưa có": từ Medusa 2.22.x lõi đặt sẵn cho MỌI request `Content-Security-Policy:
+  // frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` (framework/dist/http/express-loader.js `applySecurityHeaders`,
+  // chạy trước middleware dự án) — giữ giá trị đó là hạ CSP chặt của API xuống. Handler route vẫn ghi đè được sau bước này.
+  for (const [k, v] of Object.entries(apiSecurityHeaders(getHttpSecurityConfig().production)))
+    res.setHeader(k, v);
   // Không quảng cáo framework/phiên bản (Express đặt mặc định).
   res.removeHeader("X-Powered-By");
   next();

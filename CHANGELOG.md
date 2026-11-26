@@ -241,6 +241,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi ở đây, theo [Ke
 - Runtime lên Node.js 26 LTS (`.nvmrc` 26.13.1, `engines` `>=26.13.1 <27`, image nền `node:26.13.1-bookworm-slim`,
   `@types/node` 26) — ADR-0009, thay #37. Node 26 không kèm corepack: cài pnpm đúng `packageManager` bằng
   `node scripts/install-pnpm.mjs` (README, `xt.yaml` `setup`, `pr-policy.yml`, Dockerfile).
+- Nâng Medusa 2.22.2 → 2.22.7 (cùng nhóm phụ thuộc minor/patch). Route RBAC native `/rbac/*` mà Medusa ≥ 2.22.3 mở ngoài `/admin` bị đóng: 403 với mọi actor và method, kể cả owner (ma trận vai trò của dự án là nguồn duy nhất). `GET /admin/modules` (khung dashboard gọi) mở cho người có vai trò; `/admin/audit-logs*` cố ý đóng. Header bảo mật API nay ghi đè header mặc định mà Medusa 2.22.7 tự đặt (`frame-ancestors 'self'`, `SAMEORIGIN`) để giữ CSP chặt; audit bước đăng nhập dở (`mfa_required`) vẫn ghi theo auth identity dù Medusa đã gắn actor.
 - Chuyển chủ repo sang `www-donghanhcungban-org`: cập nhật liên kết repo (FUNDING, mẫu issue, security.txt, script/test liên quan) và dòng bản quyền trong `LICENSE`/`NOTICE`; link cũ vẫn chuyển hướng.
 
 ### Added

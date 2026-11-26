@@ -737,7 +737,17 @@ async function recordFinished(
   const ctx = (req as AuthedRequest).auth_context;
   const claims = responseClaimsOf(route, body);
   const pseudonym = (v: string) => hashIdentifier(req.scope, v);
-  const actor = resolveActor(claims, ctx, pseudonym);
+  // Bước đăng nhập dở (`mfa_required`/`verification_required`): người gọi mới qua mật khẩu, chưa là actor — ghi theo auth
+  // identity kể cả khi token/auth_context đã mang `actor_id` (Medusa 2.22.7 gắn actor sớm hơn 2.22.2).
+  const pending =
+    route.scope === "auth" &&
+    ((body as { mfa_required?: unknown } | null)?.mfa_required === true ||
+      (body as { verification_required?: unknown } | null)?.verification_required === true);
+  const identityOnly = (c: AuthCtx | null | undefined): AuthCtx | null =>
+    c == null ? null : { auth_identity_id: c.auth_identity_id };
+  const actor = pending
+    ? resolveActor(identityOnly(claims), identityOnly(ctx) ?? undefined, pseudonym)
+    : resolveActor(claims, ctx, pseudonym);
 
   let target: { type: string; id: string | null };
   if (route.identity !== undefined) {

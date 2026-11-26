@@ -19,6 +19,7 @@ import {
   nativeFieldPolicy,
 } from "../../src/lib/admin-security/field-policy";
 import { NATIVE_ADMIN_ROUTES } from "../../src/lib/admin-security/native-permissions";
+import { isNativeRbacPath } from "../../src/lib/admin-security/native-rbac";
 import { resolveAdminRule } from "../../src/lib/admin-security/policy";
 import { installAccessLogServerHook, type HttpModuleLike } from "../../src/lib/log/http";
 import { createLogger } from "../../src/lib/log/logger";
@@ -63,9 +64,13 @@ function scanRouteFiles(): { method: string; path: string; file: string }[] {
   return out;
 }
 
-/** Cây route GET admin native của Medusa đang cài (`@medusajs/medusa/dist/api/admin/**\/route.js`) — T-147. */
-function coreNativeGetRoutes(): string[] {
-  const root = join(dirname(require.resolve("@medusajs/medusa/package.json")), "dist/api/admin");
+/**
+ * Cây route GET native của Medusa đang cài (`@medusajs/medusa/dist/api/<prefix>/**\/route.js`) — T-147. `rbac`: route RBAC
+ * native ngoài `/admin` (Medusa ≥ 2.22.3), đóng toàn bộ ở lib/admin-security/native-rbac.ts.
+ */
+function coreNativeGetRoutes(prefix: "admin" | "rbac" = "admin"): string[] {
+  const root = join(dirname(require.resolve("@medusajs/medusa/package.json")), "dist/api", prefix);
+  if (prefix === "rbac" && !existsSync(root)) return [];
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -73,7 +78,7 @@ function coreNativeGetRoutes(): string[] {
       if (e.isDirectory()) walk(full);
       else if (e.name === "route.js" && /\bexports\.GET\s*=/.test(readFileSync(full, "utf8"))) {
         const rel = relative(root, dir).split(sep).filter(Boolean);
-        out.push(["/admin", ...rel.map((s) => s.replace(/^\[(.+)\]$/, ":$1"))].join("/"));
+        out.push([`/${prefix}`, ...rel.map((s) => s.replace(/^\[(.+)\]$/, ":$1"))].join("/"));
       }
     }
   };
@@ -306,7 +311,6 @@ const FLAGGED_ROUTE_RULES: Record<string, ReturnType<typeof resolveAdminRule>> =
   "/admin/locales": { kind: "any_role" },
   "/admin/views": { kind: "any_role" },
   "/admin/layouts": { kind: "any_role" },
-  "/admin/rbac": { kind: "permission", permission: "settings.manage", also: [], reauth: false },
 };
 
 /**
@@ -318,10 +322,17 @@ const UNDECLARED_BY_DESIGN: Record<string, string> = {
   "/admin/uploads/:id":
     "dashboard chỉ upload (POST); file private chỉ tải qua GET /admin/x/files/:key (T-141)",
   "/admin/fulfillment-sets/:id/service-zones/:zone_id": "dashboard đọc vùng giao qua stock-locations",
+  "/admin/audit-logs":
+    "Audit Module native (mới sau 2.22.2; route tắt khi chưa cài module `audit`), dashboard không gọi; dự án ghi audit qua xAudit",
+  "/admin/audit-logs/:id": "như /admin/audit-logs",
 };
 
-/** Tổng số route GET admin native của `@medusajs/medusa` 2.22.1 đã rà và phân loại (T-147, D-108). */
-const NATIVE_GET_ROUTE_COUNT = 133;
+/**
+ * Tổng số route GET admin native của `@medusajs/medusa` 2.22.7 đã rà và phân loại (T-147, D-108). 2.22.2 → 2.22.7: −10
+ * `/admin/rbac/*` (chuyển sang `/rbac/*`, đóng ở native-rbac.ts), +1 `/admin/modules` (any_role), +2 `/admin/audit-logs*`
+ * (cố ý đóng).
+ */
+const NATIVE_GET_ROUTE_COUNT = 126;
 
 /** Mẫu Express → path cụ thể để tra quy tắc (mọi tham số = `x1`). */
 const concretePath = (pattern: string) => pattern.replace(/:\w+/g, "x1").toLowerCase();
@@ -557,16 +568,62 @@ medusaIntegrationTestRunner({
         );
         expect(gets.length).toBeGreaterThanOrEqual(100);
         const core = coreNativeGetRoutes();
+        const rbacCore = coreNativeGetRoutes("rbac");
         const asRegex = (pattern: string) => new RegExp(`^${pattern.replace(/:\w+/g, "[^/]+")}$`);
         const problems: string[] = [];
         for (const path of gets) {
           const concrete = concretePath(path);
+          // RBAC native ngoài /admin (Medusa ≥ 2.22.3): phải là route thật của lõi; đóng toàn bộ ở native-rbac.ts — kiểm
+          // HTTP ở test "/rbac/* đóng" bên dưới. Lời gọi ngoài /admin khác → đỏ (bề mặt mới chưa có cổng).
+          if (isNativeRbacPath(concrete)) {
+            if (!rbacCore.some((c) => asRegex(c.toLowerCase()).test(concrete)))
+              problems.push(`${path}: không có route`);
+            continue;
+          }
           if (!core.some((c) => asRegex(c.toLowerCase()).test(concrete)))
             problems.push(`${path}: không có route`);
           const rule = resolveAdminRule("GET", concrete);
           if (rule.kind === "deny") problems.push(`${path}: ${rule.reason}`);
         }
         expect(problems).toEqual([]);
+      });
+
+      it("/rbac/* (RBAC native ngoài /admin) đóng với mọi actor/method, kể cả owner; /admin/modules không có khoá rbac", async () => {
+        const rbacCore = coreNativeGetRoutes("rbac");
+        // Medusa 2.22.7 có 11 route GET /rbac/*; rỗng = định dạng cây route đổi → đỏ thay vì bỏ sót.
+        expect(rbacCore.length).toBeGreaterThanOrEqual(11);
+        const probes: [string, string][] = [
+          ...rbacCore.map((r) => ["GET", r.replace(/:\w+/g, "x1")] as [string, string]),
+          ["POST", "/rbac/roles"],
+          ["POST", "/rbac/roles/x1/users"],
+          ["DELETE", "/rbac/roles/x1"],
+          ["GET", "/RBAC/roles"],
+        ];
+        const problems: string[] = [];
+        for (const [method, url] of probes) {
+          for (const [who, headers] of [
+            ["owner", accounts.owner.headers],
+            ["noRole", noRole.headers],
+          ] as const) {
+            const res = await call(method, url, headers, { name: "x", users: [noRole.userId] });
+            if (res.status !== 403 || res.data.code !== "FORBIDDEN")
+              problems.push(`${method} ${url} (${who}): ${res.status} ${String(res.data.code)}`);
+          }
+          const anon = await call(method, url, {});
+          if (anon.status !== 401 && anon.status !== 403)
+            problems.push(`${method} ${url} (anon): ${anon.status}`);
+        }
+        expect(problems).toEqual([]);
+
+        // Dashboard chỉ gọi /rbac/* khi /admin/modules có khoá `rbac` (ProtectedRoute) — module RBAC của dự án là `xRbac`.
+        for (const role of ROLES) {
+          const res = await call("GET", "/admin/modules", accounts[role].headers);
+          expect({ role, status: res.status }).toEqual({ role, status: 200 });
+          const keys = (res.data.modules as { key: string }[]).map((m) => m.key);
+          expect(keys).toContain(RBAC_MODULE);
+          expect(keys).not.toContain("rbac");
+        }
+        expect((await call("GET", "/admin/modules", noRole.headers)).status).toBe(403);
       });
 
       it("mọi route GET native của Medusa: đã khai, hoặc cố ý đóng (UNDECLARED_BY_DESIGN có lý do); không mục thừa", () => {
@@ -590,7 +647,7 @@ medusaIntegrationTestRunner({
         expect({ count: core.length, message }).toEqual({ count: NATIVE_GET_ROUTE_COUNT, message });
       });
 
-      it("route sau cờ tính năng (translations, property-labels, locales, views, layouts, rbac): quy tắc đã chốt", () => {
+      it("route sau cờ tính năng (translations, property-labels, locales, views, layouts): quy tắc đã chốt", () => {
         const core = coreNativeGetRoutes();
         const problems: string[] = [];
         for (const [family, expected] of Object.entries(FLAGGED_ROUTE_RULES)) {

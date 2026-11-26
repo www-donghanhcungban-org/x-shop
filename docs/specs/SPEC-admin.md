@@ -52,11 +52,13 @@
 | accountant | `payment.read`, `refund.*`, `settlement.*`, `report.read` |
 
 ## Đọc route admin native của Medusa (T-147, D-080, D-108)
-Bảng nguồn: `apps/backend/src/lib/admin-security/native-permissions.ts`. Route GET native **chưa khai báo → 403 với mọi vai trò, kể cả owner** (`UNDECLARED_ROUTE`); route ghi chưa khai báo → `settings.manage`. Danh sách đã khai = mọi route GET mà dashboard Medusa 2.22.1 gọi (`sdk.admin.*` trong `@medusajs/dashboard/dist`, ánh xạ qua `@medusajs/js-sdk`, đối chiếu `@medusajs/medusa/dist/api/admin`). `integration-tests/http/rbac.spec.ts` quét lại cả ba nguồn và chốt tổng số route GET native (133); số này đổi khi nâng cấp Medusa → test đỏ, phải rà lại bảng.
+Bảng nguồn: `apps/backend/src/lib/admin-security/native-permissions.ts`. Route GET native **chưa khai báo → 403 với mọi vai trò, kể cả owner** (`UNDECLARED_ROUTE`); route ghi chưa khai báo → `settings.manage`. Danh sách đã khai = mọi route GET mà dashboard Medusa 2.22.7 gọi (`sdk.admin.*` trong `@medusajs/dashboard/dist`, ánh xạ qua `@medusajs/js-sdk`, đối chiếu `@medusajs/medusa/dist/api/admin`). `integration-tests/http/rbac.spec.ts` quét lại cả ba nguồn và chốt tổng số route GET native (126); số này đổi khi nâng cấp Medusa → test đỏ, phải rà lại bảng.
+
+**RBAC native `/rbac/*`** (Medusa ≥ 2.22.3 chuyển `/admin/rbac/*` ra ngoài `/admin`; lõi chỉ đòi actor `user` đã đăng nhập, không qua cổng RBAC admin của dự án): **403 `FORBIDDEN` với mọi actor và mọi method, kể cả owner** (`apps/backend/src/lib/admin-security/native-rbac.ts`). Dự án không dùng RBAC native; ma trận vai trò ở module `xRbac` là nguồn duy nhất. Dashboard chỉ gọi `/rbac/*` khi `GET /admin/modules` có khoá `rbac` — không có ở dự án này.
 
 | Nhóm route đọc native | Quyền | owner | catalog_manager | order_staff | warehouse | support | accountant |
 |---|---|---|---|---|---|---|---|
-| Tham chiếu (trường riêng không PII; quan hệ ngược tới đơn/khách bị chặn bởi chính sách `fields` bên dưới): stores, regions, sales-channels, currencies, locales, plugins, return/refund-reasons, views, layouts | có ít nhất một vai trò | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Tham chiếu (trường riêng không PII; quan hệ ngược tới đơn/khách bị chặn bởi chính sách `fields` bên dưới): stores, regions, sales-channels, currencies, locales, plugins, modules (chỉ khoá module), return/refund-reasons, views, layouts | có ít nhất một vai trò | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Catalog: products, product-variants, categories, collections, tags, types, options, property-labels, translations, shipping-profiles, price-preferences | `catalog.read` | ✓ | ✓ | – | ✓ | – | – |
 | Bảng giá, khuyến mãi, chiến dịch | `price.write` | ✓ | ✓ | – | – | – | – |
 | Tồn kho, giữ hàng, kho hàng; biến thể kèm tồn của form tạo vận đơn (`/admin/products/:id/variants/:variant_id` — vai trò thiếu `catalog.read` chỉ nhận trường tồn kho) | `inventory.read` | ✓ | ✓ | ✓ | ✓ | – | – |
@@ -64,8 +66,8 @@ Bảng nguồn: `apps/backend/src/lib/admin-security/native-permissions.ts`. Rou
 | Đơn, đổi trả, khiếu nại, đổi hàng, đơn nháp, vận đơn; khách, nhóm khách (PII) | `order.read` | ✓ | – | ✓ | – | – | ✓ |
 | Thanh toán, payment collection | `payment.read` | ✓ | – | – | – | – | ✓ |
 | Người dùng, lời mời (PII nhân sự) | `user.manage` | ✓ | – | – | – | – | – |
-| Khoá API, thông báo (có người nhận), tìm kiếm toàn cục (quét đơn/khách/người dùng/khoá API), chỉ số tìm kiếm, thuế, nhà vận chuyển, loại phương án giao, workflow, RBAC native | `settings.manage` (MFA) | ✓ | – | – | – | – | – |
-| Cố ý đóng: `/admin/index/details`, `/admin/uploads/:id` (file private chỉ qua `/admin/x/files/:key`), `/admin/fulfillment-sets/:id/service-zones/:zone_id` | — | – | – | – | – | – | – |
+| Khoá API, thông báo (có người nhận), tìm kiếm toàn cục (quét đơn/khách/người dùng/khoá API), chỉ số tìm kiếm, thuế, nhà vận chuyển, loại phương án giao, workflow | `settings.manage` (MFA) | ✓ | – | – | – | – | – |
+| Cố ý đóng: `/admin/index/details`, `/admin/uploads/:id` (file private chỉ qua `/admin/x/files/:key`), `/admin/fulfillment-sets/:id/service-zones/:zone_id`, `/admin/audit-logs*` (Audit Module native, chưa cài; dự án dùng xAudit); toàn bộ `/rbac/*` | — | – | – | – | – | – | – |
 
 CSKH (`order.read_masked`) không đọc PII qua route native; xem đơn đã che qua `/admin/x/*`.
 
